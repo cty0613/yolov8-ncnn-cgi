@@ -15,43 +15,69 @@
 //modified 1-14-2023 Q-engineering
 
 #include "yoloV8.h"
+#include "json.hpp"
 
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
+#include <fcgi_stdio.h>
 #include <iostream>
 #include <stdio.h>
 #include <vector>
 
+using json = nlohmann::json;
+
 YoloV8 yolov8;
 int target_size = 640; //416; //320;  must be divisible by 32.
 
-int main(int argc, char** argv)
+int main()
 {
-    const char* imagepath = argv[1];
+    std::ios::sync_with_stdio(false); // cout/printf 버퍼 동기화 방지
 
-    if (argc != 2)
-    {
-        fprintf(stderr, "Usage: %s [imagepath]\n", argv[0]);
-        return -1;
+    yolov8.load(target_size); // 모델 한 번만 로드
+
+    while (FCGI_Accept() >= 0) {
+        std::cout << "Content-Type: application/json\r\n\r\n";
+
+        cv::VideoCapture cap("/dev/video0", cv::CAP_V4L2); // 카메라 장치 열기
+        if (!cap.isOpened()) {
+            json err = { {"error", "Failed to open camera (/dev/video0)"} };
+            std::cout << err.dump(4) << std::endl;
+            continue;
+        }
+
+        cv::Mat frame;
+        cap >> frame;
+
+        if (frame.empty()) {
+            json err = { {"error", "Captured frame is empty"} };
+            std::cout << err.dump(4) << std::endl;
+            continue;
+        }
+
+        std::vector<Object> objects;
+        yolov8.detect(frame, objects);
+
+        json response;
+        response["detected_count"] = objects.size();
+        for (size_t i = 0; i < objects.size(); ++i) {
+            const Object& obj = objects[i];
+            response["objects"].push_back({
+                {"id", i},
+                {"label", obj.label},
+                {"prob", obj.prob},
+                {"bbox", {
+                    {"x", obj.rect.x},
+                    {"y", obj.rect.y},
+                    {"width", obj.rect.width},
+                    {"height", obj.rect.height}
+                }}
+            });
+        }
+
+        std::cout << response.dump(4) << std::endl;
     }
-
-    cv::Mat m = cv::imread(imagepath, 1);
-    if (m.empty())
-    {
-        fprintf(stderr, "cv::imread %s failed\n", imagepath);
-        return -1;
-    }
-
-    yolov8.load(target_size);       //load model (once) see yoloyV8.cpp line 246
-
-    std::vector<Object> objects;
-    yolov8.detect(m, objects);      //recognize the objects
-    yolov8.draw(m, objects);        //show the outcome
-
-    cv::imshow("RPi4 - 1.95 GHz - 2 GB ram",m);
-//    cv::imwrite("out.jpg",m);
-    cv::waitKey(0);
 
     return 0;
 }
+

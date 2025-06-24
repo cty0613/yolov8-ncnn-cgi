@@ -354,8 +354,6 @@ int YoloV8::draw(cv::Mat& rgb, const std::vector<Object>& objects)
     {
         const Object& obj = objects[i];
 
-//         fprintf(stderr, "%d = %.5f at %.2f %.2f %.2f x %.2f\n", obj.label, obj.prob,
-//                 obj.rect.x, obj.rect.y, obj.rect.width, obj.rect.height);
 
         cv::rectangle(rgb, obj.rect, cv::Scalar(255, 0, 0));
 
